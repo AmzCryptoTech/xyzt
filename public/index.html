@@ -25,8 +25,8 @@
         <h2 style="margin-top: 0;">Pubblica nel tuo Spaziotempo</h2>
         <div id="gps-status" class="status">📍 Ricerca segnale GPS in corso...</div>
         
-        <textarea id="post-content" rows="3" placeholder="Cosa sta succedendo qui, ora?" disabled></textarea>
-        <input type="text" id="post-media" placeholder="URL immagine (opzionale)" disabled>
+        <textarea id="post-content" rows="3" placeholder="Cosa sta succedendo qui, ora?" disabled></textarea>        
+		<input type="file" id="post-media" accept="image/*" capture="environment" disabled style="background: white;">
         
         <button id="btn-publish" onclick="publishPost()" disabled>Pubblica</button>
     </div>
@@ -69,35 +69,46 @@
         // 2. Pubblicazione
         async function publishPost() {
             const content = document.getElementById('post-content').value;
-            const media_url = document.getElementById('post-media').value;
+            const fileInput = document.getElementById('post-media');
             const btn = document.getElementById('btn-publish');
 
-            if (!content) return alert("Scrivi qualcosa prima di pubblicare!");
+            if (!content && !fileInput.files[0]) return alert("Scrivi qualcosa o inserisci una foto!");
 
             btn.disabled = true;
-            btn.innerText = "Pubblicazione...";
+            btn.innerText = "Pubblicazione in corso...";
+
+            // Creiamo un pacchetto FormData per contenere sia testo che file
+            const formData = new FormData();
+            formData.append('content', content);
+            formData.append('lat', currentLat);
+            formData.append('lon', currentLon);
+            
+            if (fileInput.files[0]) {
+                formData.append('media', fileInput.files[0]);
+            }
 
             try {
+                // Attenzione: Non impostare il Content-Type. Il browser lo imposterà 
+                // in automatico a multipart/form-data generando il boundary corretto.
                 const response = await fetch(`${API_BASE}/posts`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ content, media_url, lat: currentLat, lon: currentLon })
+                    body: formData
                 });
 
                 if (!response.ok) throw new Error("Errore del server");
 
                 const data = await response.json();
                 
-                // Salva il token di cancellazione nel browser (assieme al contenuto per comodità visiva)
                 savePostLocally({
                     id: data.id,
-                    content: content,
+                    content: content || "📷 Foto caricata",
                     created_at: data.created_at,
                     deletion_token: data.deletion_token
                 });
 
+                // Resetta il form
                 document.getElementById('post-content').value = '';
-                document.getElementById('post-media').value = '';
+                fileInput.value = '';
                 renderMyPosts();
 
             } catch (err) {
