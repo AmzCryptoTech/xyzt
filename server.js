@@ -6,6 +6,7 @@ const { createClient } = require('@supabase/supabase-js');
 const app = express();
 app.use(express.json());
 app.use(cors());
+app.use(express.static('public'));
 
 // Connessione a Supabase
 const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
