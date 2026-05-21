@@ -1,4 +1,4 @@
-import { setLanguage } from './i18n.js';
+import { dictionary, setLanguage } from './i18n.js';
 import { publish, fetchSpacePosts, fetchTimePosts, fetchRecentLabels } from './api.js';
 import { getCurrentLocation } from './geofeed.js';
 import { renderFeed } from './ui.js';
@@ -30,13 +30,21 @@ if (!myDeviceId) {
 // Carica il nick al riavvio
 document.getElementById('input-nickname').value = localStorage.getItem('xyzt_nickname') || '';
 
+document.getElementById('home-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    window.history.pushState({}, "", "/");
+    showSpace();
+});
+
 // Salva Profilo
 document.getElementById('btn-save-profile').addEventListener('click', () => {
     const nick = document.getElementById('input-nickname').value.trim();
     if (nick) {
         localStorage.setItem('xyzt_nickname', nick);
-        alert('Profilo salvato!');
-        showSpace(); // Torna alla home
+        // Usa il dizionario per l'alert
+        const lang = document.getElementById('lang-selector').value;
+        alert(dictionary[lang].profile_saved_alert);
+        showSpace(); 
     }
 });
 
@@ -183,10 +191,15 @@ btnPublish.addEventListener('click', async () => {
     btnPublish.disabled = true;
     btnPublish.innerText = "Pubblicazione...";
 
-    const formData = new FormData();
     const savedNick = localStorage.getItem('xyzt_nickname');
+    const myDeviceId = localStorage.getItem('xyzt_device_id');
+    
+    // Formato richiesto: Nickname(ID) o solo ID se il nick è assente
     const finalAuthorId = savedNick ? `${savedNick}(${myDeviceId})` : myDeviceId;
-    formData.append('author_id', finalAuthorId);
+    
+    const formData = new FormData();
+    formData.append('content', content);
+    formData.append('author_id', finalAuthorId); // Invia l'ID combinato
     
     if (fileInput) formData.append('media', fileInput);
 
@@ -221,6 +234,14 @@ btnPublish.addEventListener('click', async () => {
         btnPublish.innerText = "Publish";
     }
 });
+
+function initSearchLabelUI() {
+    const searchInput = document.getElementById('input-search-label');
+    const goBtn = document.getElementById('btn-go-label');
+    if(searchInput) searchInput.setAttribute('data-i18n', 'search_label_placeholder');
+    if(goBtn) goBtn.setAttribute('data-i18n', 'go_label_btn');
+}
+initSearchLabelUI();
 
 // Imposta la lingua predefinita
 setLanguage('en');
