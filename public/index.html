@@ -8,18 +8,52 @@
 </head>
 <body>
     <header>
-        <h1>xyzt</h1>
-        <div class="toggle-container">
+        <a href="/" id="home-link" style="text-decoration: none; color: inherit;">
+            <h1>xyzt</h1>
+        </a>
+        
+        <div style="display: flex; justify-content: center; gap: 15px; margin-bottom: 15px; font-size: 0.9em;">
+            <a href="#" id="nav-profile" style="color: #aaa; text-decoration: none;" data-i18n="nav_profile">Profile</a>
+            <a href="#" id="nav-faq" style="color: #aaa; text-decoration: none;" data-i18n="nav_faq">FAQ</a>
+        </div>
+        
+        <div class="toggle-container" id="main-toggles">
             <button id="mode-space" class="active">Space</button>
             <button id="mode-time">Time</button>
         </div>
+        
         <select id="lang-selector" style="margin-top: 15px; background: #333; color: white; border: none; padding: 5px; border-radius: 5px;">
             <option value="en">EN</option>
             <option value="it">IT</option>
         </select>
     </header>
 
-    <section class="publish-container" style="padding: 20px; max-width: 600px; margin: 0 auto;">
+    <main id="view-profile" style="display: none; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 data-i18n="profile_title">Il tuo Profilo</h2>
+        <p style="color: #888; font-size: 0.9em;" data-i18n="profile_desc">Il tuo Nickname sarà visibile solo sui nuovi post.</p>
+        <input type="text" id="input-nickname" data-i18n="profile_nick_placeholder" placeholder="Scegli un nickname" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #444; background: #1e1e1e; color: white;">
+        <button id="btn-save-profile" style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 10px 20px; width: 100%; font-weight: bold;" data-i18n="profile_save_btn">Salva Nickname</button>
+    </main>
+
+    <main id="view-faq" style="display: none; max-width: 600px; margin: 0 auto; padding: 20px; line-height: 1.6;">
+        <h2 data-i18n="faq_title">Cos'è xyzt?</h2>
+        <p data-i18n="faq_intro">xyzt è un social network effimero diviso in due dimensioni esplorabili.</p>
+        
+        <p>
+            <strong data-i18n="faq_space_title">Space (Qui e Ora):</strong> 
+            <span data-i18n="faq_space_desc">I post sono ancorati alle coordinate fisiche da cui scrivi. Puoi leggere solo ciò che è stato pubblicato nel raggio di 5 chilometri dalla tua posizione attuale.</span>
+        </p>
+        <p>
+            <strong data-i18n="faq_time_title">Time (Etichette):</strong> 
+            <span data-i18n="faq_time_desc">I post sfidano la distanza fisica e sono raggruppati in stanze chiamate "Label" (es. #musica, #gemini). Chiunque nel mondo può entrare in una label e leggere i messaggi al suo interno.</span>
+        </p>
+        <p>
+            <strong data-i18n="faq_clock_title">L'Orologio:</strong> 
+            <span data-i18n="faq_clock_desc">Niente è permanente su xyzt. Ogni singolo post, che sia nello spazio o nel tempo, ha un tempo di scadenza ben visibile. Una volta che il timer scende a zero, il post viene eliminato per sempre.</span>
+        </p>
+    </main>
+
+    <section id="publish-section" class="publish-container" style="padding: 20px; max-width: 600px; margin: 0 auto;">
         <textarea id="post-content" data-i18n="placeholder" placeholder="What's happening?" rows="3"></textarea>
         <div style="display: flex; gap: 10px; margin-top: 10px;">
             <input type="file" id="post-media" accept="image/*" capture="environment" style="flex: 1; color: white;">
@@ -28,16 +62,23 @@
     </section>
 
     <main id="view-space" style="max-width: 600px; margin: 0 auto; padding: 0 20px;">
-        <h2 data-i18n="space_title">Here and Now</h2>
-        <div id="space-feed"></div> </main>
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+            <h2 data-i18n="space_title">Here and Now</h2>
+            <button id="btn-refresh-gps" style="background: transparent; color: var(--primary); border: 1px solid var(--primary); padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8em;">Forza GPS</button>
+        </div>
+        <div id="space-feed"></div>
+    </main>
 
     <main id="view-time" style="display: none; max-width: 600px; margin: 0 auto; padding: 0 20px;">
-		<h2 id="time-label-title">Time Label: <span id="current-label" style="color: var(--primary);"></span></h2>
-		
-		<div id="recent-labels" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
-		
-		<div id="time-feed"></div>
-	</main>
+        <div style="display: flex; gap: 10px; margin-bottom: 20px; margin-top: 10px;">
+            <input type="text" id="input-search-label" placeholder="Crea o cerca label..." style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #444; background: #1e1e1e; color: white;">
+            <button id="btn-go-label" style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 0 20px; font-weight: bold; cursor: pointer;">Vai</button>
+        </div>
+
+        <h2 id="time-label-title">Time Label: <span id="current-label" style="color: var(--primary);"></span></h2>
+        <div id="recent-labels" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
+        <div id="time-feed"></div>
+    </main>
 
     <script type="module" src="/js/app.js"></script>
 </body>

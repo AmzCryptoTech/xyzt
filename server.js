@@ -156,17 +156,52 @@ app.get('/api/time/:label', async (req, res) => {
 
 // --- PULIZIA PERIODICA (Cron interno) ---
 
-// Controlla il database ogni 5 minuti e rimuove definitivamente i post scaduti
+// Funzione helper per estrarre il nome del file dall'URL
+function extractFileName(url) {
+    if (!url) return null;
+    const parts = url.split('/');
+    return parts[parts.length - 1]; // Prende l'ultimo pezzo, es: "1684323-42.jpg"
+}
+
+// Controlla il DB ogni 5 minuti, rimuove le immagini e poi i post scaduti
 setInterval(async () => {
     try {
         const now = new Date().toISOString();
+
+        // 1. Trova i post scaduti con immagini (Spazio)
+        const { data: expiredSpace } = await supabase.from('space_posts')
+            .select('media_url')
+            .lt('expires_at', now)
+            .not('media_url', 'is', null);
+
+        // 2. Trova i post scaduti con immagini (Tempo)
+        const { data: expiredTime } = await supabase.from('time_posts')
+            .select('media_url')
+            .lt('expires_at', now)
+            .not('media_url', 'is', null);
+
+        // 3. Raccogli tutti i nomi dei file da eliminare
+        let filesToDelete = [];
+        if (expiredSpace) filesToDelete.push(...expiredSpace.map(p => extractFileName(p.media_url)));
+        if (expiredTime) filesToDelete.push(...expiredTime.map(p => extractFileName(p.media_url)));
+
+        // Pulisci l'array da eventuali valori null o indefiniti
+        filesToDelete = filesToDelete.filter(f => f != null);
+
+        // 4. Elimina i file dallo storage in un colpo solo
+        if (filesToDelete.length > 0) {
+            const { error: storageError } = await supabase.storage.from('xyzt-media').remove(filesToDelete);
+            if (storageError) console.error("Errore pulizia Storage:", storageError);
+        }
+
+        // 5. Elimina i record dal database
         await supabase.from('space_posts').delete().lt('expires_at', now);
         await supabase.from('time_posts').delete().lt('expires_at', now);
-        // Silenzioso, esegue senza intasare i log a meno che non ci sia un errore
+        
     } catch (error) {
-        console.error("Errore durante il ciclo di pulizia del DB:", error);
+        console.error("Errore durante il ciclo di pulizia globale:", error);
     }
-}, 60000 * 5);
+}, 60000 * 5); // Esegue ogni 5 minuti
 
 
 // --- FRONTEND ROUTING E GESTIONE FILE STATICI ---

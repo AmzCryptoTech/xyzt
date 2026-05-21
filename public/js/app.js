@@ -1,7 +1,17 @@
-import { setLanguage } from './i18n.js';
+import { dictionary, setLanguage } from './i18n.js';
 import { publish, fetchSpacePosts, fetchTimePosts, fetchRecentLabels } from './api.js';
 import { getCurrentLocation } from './geofeed.js';
 import { renderFeed } from './ui.js';
+const viewProfile = document.getElementById('view-profile');
+const viewFaq = document.getElementById('view-faq');
+const publishSection = document.getElementById('publish-section');
+const mainToggles = document.getElementById('main-toggles');
+const path = window.location.pathname.substring(1); 
+const viewSpace = document.getElementById('view-space');
+const viewTime = document.getElementById('view-time');
+const btnSpace = document.getElementById('mode-space');
+const btnTime = document.getElementById('mode-time');
+const btnPublish = document.getElementById('btn-publish');
 
 // --- GESTIONE IDENTITA' DISPOSITIVO ---
 let myAuthorId = localStorage.getItem('xyzt_author_id');
@@ -11,12 +21,32 @@ if (!myAuthorId) {
     localStorage.setItem('xyzt_author_id', myAuthorId);
 }
 
-const path = window.location.pathname.substring(1); 
-const viewSpace = document.getElementById('view-space');
-const viewTime = document.getElementById('view-time');
-const btnSpace = document.getElementById('mode-space');
-const btnTime = document.getElementById('mode-time');
-const btnPublish = document.getElementById('btn-publish');
+let myDeviceId = localStorage.getItem('xyzt_device_id');
+if (!myDeviceId) {
+    myDeviceId = Math.random().toString(16).substring(2, 8);
+    localStorage.setItem('xyzt_device_id', myDeviceId);
+}
+
+// Carica il nick al riavvio
+document.getElementById('input-nickname').value = localStorage.getItem('xyzt_nickname') || '';
+
+document.getElementById('home-link').addEventListener('click', (e) => {
+    e.preventDefault();
+    window.history.pushState({}, "", "/");
+    showSpace();
+});
+
+// Salva Profilo
+document.getElementById('btn-save-profile').addEventListener('click', () => {
+    const nick = document.getElementById('input-nickname').value.trim();
+    if (nick) {
+        localStorage.setItem('xyzt_nickname', nick);
+        // Usa il dizionario per l'alert
+        const lang = document.getElementById('lang-selector').value;
+        alert(dictionary[lang].profile_saved_alert);
+        showSpace(); 
+    }
+});
 
 // Inizializzazione al caricamento della pagina
 if (path === '' || path === 'time') {
@@ -43,24 +73,74 @@ document.getElementById('lang-selector').addEventListener('change', (e) => {
 });
 
 // Funzioni di visualizzazione
-function showSpace() {
-    viewSpace.style.display = 'block';
+function hideAllViews() {
+    viewSpace.style.display = 'none';
     viewTime.style.display = 'none';
+    viewProfile.style.display = 'none';
+    viewFaq.style.display = 'none';
+    publishSection.style.display = 'block';
+    mainToggles.style.display = 'flex';
+}
+
+function showSpace() {
+    hideAllViews();
+    viewSpace.style.display = 'block';
     btnSpace.classList.add('active');
     btnTime.classList.remove('active');
-    loadSpaceFeed(); // Carica i post dal GPS
+    loadSpaceFeed();
 }
 
 function showTime(label) {
-    viewSpace.style.display = 'none';
+    hideAllViews();
     viewTime.style.display = 'block';
     btnSpace.classList.remove('active');
     btnTime.classList.add('active');
     document.getElementById('current-label').innerText = label;
-    
     loadRecentLabels();
     loadTimeFeed(label); 
 }
+
+// Navigazione Menu Alto
+document.getElementById('nav-profile').addEventListener('click', (e) => {
+    e.preventDefault();
+    hideAllViews();
+    publishSection.style.display = 'none';
+    mainToggles.style.display = 'none';
+    viewProfile.style.display = 'block';
+});
+
+document.getElementById('nav-faq').addEventListener('click', (e) => {
+    e.preventDefault();
+    hideAllViews();
+    publishSection.style.display = 'none';
+    mainToggles.style.display = 'none';
+    viewFaq.style.display = 'block';
+});
+
+// Naviga a una nuova Label
+document.getElementById('btn-go-label').addEventListener('click', () => {
+    let newLabel = document.getElementById('input-search-label').value.trim().toLowerCase();
+    if (newLabel) {
+        // Rimuove spazi vuoti e caratteri strani
+        newLabel = newLabel.replace(/[^a-z0-9]/g, ''); 
+        document.getElementById('input-search-label').value = '';
+        window.history.pushState({}, "", `/${newLabel}`);
+        showTime(newLabel);
+    }
+});
+
+// Forza Refresh GPS
+document.getElementById('btn-refresh-gps').addEventListener('click', async () => {
+    const containerId = 'space-feed';
+    document.getElementById(containerId).innerHTML = '<p class="empty-feed">Ricalibrazione GPS (ignorando la cache)...</p>';
+    try {
+        const coords = await getCurrentLocation(true); // true forza il refresh
+        const posts = await fetchSpacePosts(coords.lat, coords.lon);
+        renderFeed(containerId, posts);
+    } catch (e) {
+        document.getElementById(containerId).innerHTML = `<p class="empty-feed">Errore GPS: ${e.message}</p>`;
+    }
+});
 
 async function loadRecentLabels() {
     const labels = await fetchRecentLabels();
@@ -111,10 +191,16 @@ btnPublish.addEventListener('click', async () => {
     btnPublish.disabled = true;
     btnPublish.innerText = "Pubblicazione...";
 
+    const savedNick = localStorage.getItem('xyzt_nickname');
+    const myDeviceId = localStorage.getItem('xyzt_device_id');
+    
+    // Formato richiesto: Nickname(ID) o solo ID se il nick è assente
+    const finalAuthorId = savedNick ? `${savedNick}(${myDeviceId})` : myDeviceId;
+    
     const formData = new FormData();
     formData.append('content', content);
-    formData.append('author_id', myAuthorId); // INVIA L'ID
-	
+    formData.append('author_id', finalAuthorId); // Invia l'ID combinato
+    
     if (fileInput) formData.append('media', fileInput);
 
     try {
@@ -148,6 +234,14 @@ btnPublish.addEventListener('click', async () => {
         btnPublish.innerText = "Publish";
     }
 });
+
+function initSearchLabelUI() {
+    const searchInput = document.getElementById('input-search-label');
+    const goBtn = document.getElementById('btn-go-label');
+    if(searchInput) searchInput.setAttribute('data-i18n', 'search_label_placeholder');
+    if(goBtn) goBtn.setAttribute('data-i18n', 'go_label_btn');
+}
+initSearchLabelUI();
 
 // Imposta la lingua predefinita
 setLanguage('en');
