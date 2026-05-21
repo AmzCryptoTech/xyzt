@@ -1,4 +1,5 @@
 require('dotenv').config();
+const rateLimit = require('express-rate-limit');
 const express = require('express');
 const cors = require('cors');
 const multer = require('multer');
@@ -21,6 +22,50 @@ const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 } 
 });
+
+const contactLimiter = rateLimit({
+    windowMs: 15 * 60 * 1000, 
+    max: 3, 
+    message: { error: "Troppe richieste. Per favore riprova più tardi." }
+});
+
+const bayes = require('bayes');
+const spamClassifier = bayes();
+
+// 1. Addestramento rapido (lo fai una volta all'avvio del server)
+// Insegni alla libreria cosa è "buono" (ham) e cosa è "cattivo" (spam)
+spamClassifier.learn('ciao a tutti, come funziona questa app?', 'ham');
+spamClassifier.learn('qualcuno ha visto il mio cane in centro?', 'ham');
+spamClassifier.learn('buy cheap crypto and bitcoin investment guaranteed return', 'spam');
+spamClassifier.learn('click here for best seo services and followers', 'spam');
+
+const Filter = require('bad-words');
+const filter = new Filter();
+
+// Puoi aggiungere i tuoi termini specifici per i bot
+filter.addWords('crypto', 'investment', 'casino', 'viagra', 'seo services');
+
+async function isSpamBayesian(text) {
+    if (!text) return false;
+    
+    const urlCount = (text.match(/https?:\/\//g) || []).length;
+    if (urlCount > 2) return true;
+
+    // L'IA locale analizza il testo e restituisce 'spam' o 'ham'
+    const result = await spamClassifier.categorize(text);
+    return result === 'spam';
+}
+
+function isSpam(text) {
+    if (!text) return false;
+    
+    // Controllo dei link (questo rimane sempre utile)
+    const urlCount = (text.match(/https?:\/\//g) || []).length;
+    if (urlCount > 2) return true;
+
+    // filter.isProfane controlla se il testo contiene parole della blacklist
+    return filter.isProfane(text); 
+}
 
 // --- FUNZIONI DI SUPPORTO ---
 
@@ -113,6 +158,16 @@ app.post('/api/time', upload.single('media'), async (req, res) => {
         // Standardizza la label in minuscolo e calcola la scadenza esatta
         const safeLabel = label ? label.toLowerCase() : 'xyzt';
         const value = calcoloValoreLabel(safeLabel);
+		
+		const alertLabels = (process.env.ALERT_LABELS || '').split(',');
+		if (alertLabels.includes(safeLabel)) {
+			transporter.sendMail({
+				from: process.env.SMTP_USER,
+				to: process.env.ADMIN_EMAIL,
+				subject: `[xyzt][alert] Utilizzata label monitorata: #${safeLabel} ⚠️`,
+				text: `Un utente ha appena pubblicato nella label monitorata: #${safeLabel}\nContenuto: ${content}`
+			}).catch(err => console.error("Errore invio Alert Email:", err));
+		}
         
         const expiresInMinutes = 10 + value; // 10 min fissi + calcolo
         const expiresAt = new Date(Date.now() + expiresInMinutes * 60000).toISOString();
@@ -163,6 +218,83 @@ function extractFileName(url) {
     return parts[parts.length - 1]; // Prende l'ultimo pezzo, es: "1684323-42.jpg"
 }
 
+const nodemailer = require('nodemailer');
+
+const transporter = nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT),
+    secure: true, 
+    auth: {
+        user: process.env.SMTP_USER,
+        pass: process.env.SMTP_PASS
+    }
+});
+
+// --- MODULO CONTATTI ---
+app.post('/api/contact', contactLimiter, async (req, res) => {
+    const { message, email, honeypot } = req.body;
+
+    // SCUDO 1: Controllo Honeypot (Trappola per bot ciechi)
+    if (honeypot) {
+        console.log("🛑 Bot bloccato: Campo Honeypot compilato.");
+        // Finto successo per far credere al bot di avercela fatta
+        return res.json({ success: true }); 
+    }
+
+	let subject_pref = '[xyzt]';
+    // SCUDO 2: Controllo del Contenuto (Trappola semantica)
+    if (isSpam(message)) {
+        console.log("🛑 Messaggio scartato: Contenuto classificato come SPAM." + message);
+        // Anche qui, finto successo
+        return res.json({ success: true }); 
+    }
+	
+	if (isSpamBayesian(message)) {
+        console.log("🛑 Messaggio scartato: Contenuto classificato come SPAM Bayes." + message);        
+        //return res.json({ success: false }); 
+		subject_pref = '[xyzt][spam-bayes]';
+    }
+
+    // Se passa entrambi gli scudi, invia l'email	
+    try {
+        await transporter.sendMail({
+            from: process.env.SMTP_USER,
+            to: process.env.ADMIN_EMAIL,
+            subject: subject_pref + ' Nuovo messaggio di contatto',
+            text: `Inviato da: ${email || 'Anonimo'}\n\nMessaggio:\n${message}`
+        });
+        res.json({ success: true });
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
+
+
+// --- REPORT GIORNALIERO AUTOMATICO (Ogni 24 Ore) ---
+setInterval(async () => {
+    try {
+        const ventiquattroOreFa = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+        
+        // Estrai statistiche rilevanti da Supabase
+        const { data: nuoveLabel } = await supabase
+            .from('category_stats')
+            .select('category_id, total_posts')
+            .eq('category_type', 'TIME')
+            .gt('last_activity', ventiquattroOreFa);
+
+        let listaLabel = nuoveLabel.map(l => `- #${l.category_id} (Post totali: ${l.total_posts})`).join('\n');
+
+        await transporter.sendMail({
+            from: process.env.SMTP_USER,
+            to: process.env.ADMIN_EMAIL,
+            subject: `[xyzt] Daily Activity Report 📊`,
+            text: `Ecco le attività nelle ultime 24 ore:\n\nLabel attive o create di recente:\n${listaLabel || 'Nessuna nuova attività.'}`
+        });
+    } catch (error) {
+        console.error("Errore generazione report giornaliero:", error);
+    }
+}, 1000 * 60 * 60 * 24); // Spara esattamente ogni 24 ore
+
 // Controlla il DB ogni 5 minuti, rimuove le immagini e poi i post scaduti
 setInterval(async () => {
     try {
@@ -205,6 +337,20 @@ setInterval(async () => {
 
 
 // --- FRONTEND ROUTING E GESTIONE FILE STATICI ---
+
+app.get('/api/space/map-points', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('space_posts')
+            .select('lat, lon')
+            .gt('expires_at', new Date().toISOString());
+
+        if (error) throw error;
+        res.json(data || []);
+    } catch (error) {
+        res.status(500).json({ error: error.message });
+    }
+});
 
 // Ottieni le ultime 10 label attive
 app.get('/api/labels/recent', async (req, res) => {

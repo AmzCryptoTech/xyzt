@@ -3,18 +3,22 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>xyzt</title>
+    <title>spacetime [xyzt]</title>
     <link rel="stylesheet" href="/css/style.css">
+	<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+	<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 </head>
 <body>
     <header>
         <a href="/" id="home-link" style="text-decoration: none; color: inherit;">
-            <h1>xyzt</h1>
+            <h1>spacetime [xyzt]</h1>
         </a>
         
         <div style="display: flex; justify-content: center; gap: 15px; margin-bottom: 15px; font-size: 0.9em;">
             <a href="#" id="nav-profile" style="color: #aaa; text-decoration: none;" data-i18n="nav_profile">Profile</a>
             <a href="#" id="nav-faq" style="color: #aaa; text-decoration: none;" data-i18n="nav_faq">FAQ</a>
+			<a href="#" id="nav-map" style="color: #aaa; text-decoration: none;">Map</a>
+			<a href="#" id="nav-contact" style="color: #aaa; text-decoration: none;" data-i18n="nav_contact">Contact</a>
         </div>
         
         <div class="toggle-container" id="main-toggles">
@@ -52,6 +56,17 @@
             <span data-i18n="faq_clock_desc">Niente è permanente su xyzt. Ogni singolo post, che sia nello spazio o nel tempo, ha un tempo di scadenza ben visibile. Una volta che il timer scende a zero, il post viene eliminato per sempre.</span>
         </p>
     </main>
+	
+	<main id="view-contact" style="display: none; max-width: 600px; margin: 0 auto; padding: 20px;">
+        <h2 data-i18n="contact_title">Contattaci</h2>
+        <p style="color: #888; font-size: 0.9em; margin-bottom: 15px;" data-i18n="contact_desc">Inviaci feedback, segnalazioni o richieste d'aiuto.</p>
+        
+        <input type="email" id="contact-email" data-i18n="contact_email_placeholder" placeholder="Tua email (opzionale)" style="width: 100%; padding: 10px; margin-bottom: 10px; border-radius: 8px; border: 1px solid #444; background: #1e1e1e; color: white;">
+        <input type="text" id="contact-website" placeholder="Lascia vuoto questo campo" style="display: none;" autocomplete="off" tabindex="-1">
+        <textarea id="contact-message" data-i18n="contact_msg_placeholder" placeholder="Il tuo messaggio..." rows="5" style="width: 100%; padding: 10px; margin-bottom: 15px; border-radius: 8px; border: 1px solid #444; background: #1e1e1e; color: white; resize: vertical; font-family: inherit;"></textarea>
+        
+        <button id="btn-send-contact" style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 10px 20px; width: 100%; font-weight: bold; cursor: pointer;" data-i18n="contact_send_btn">Invia Messaggio</button>
+    </main>
 
     <section id="publish-section" class="publish-container" style="padding: 20px; max-width: 600px; margin: 0 auto;">
         <textarea id="post-content" data-i18n="placeholder" placeholder="What's happening?" rows="3"></textarea>
@@ -64,21 +79,27 @@
     <main id="view-space" style="max-width: 600px; margin: 0 auto; padding: 0 20px;">
         <div style="display: flex; justify-content: space-between; align-items: center;">
             <h2 data-i18n="space_title">Here and Now</h2>
-            <button id="btn-refresh-gps" style="background: transparent; color: var(--primary); border: 1px solid var(--primary); padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8em;">Forza GPS</button>
+            <button id="btn-refresh-gps" style="background: transparent; color: var(--primary); border: 1px solid var(--primary); padding: 5px 10px; border-radius: 5px; cursor: pointer; font-size: 0.8em;" data-i18n="gps_force">Forza GPS</button>
         </div>
         <div id="space-feed"></div>
     </main>
 
     <main id="view-time" style="display: none; max-width: 600px; margin: 0 auto; padding: 0 20px;">
-        <div style="display: flex; gap: 10px; margin-bottom: 20px; margin-top: 10px;">
-            <input type="text" id="input-search-label" placeholder="Crea o cerca label..." style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #444; background: #1e1e1e; color: white;">
-            <button id="btn-go-label" style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 0 20px; font-weight: bold; cursor: pointer;">Vai</button>
-        </div>
+		<div style="display: flex; gap: 10px; margin-bottom: 20px; margin-top: 10px;">
+			<input type="text" id="input-search-label" placeholder="Crea o cerca label..." style="flex: 1; padding: 10px; border-radius: 8px; border: 1px solid #444; background: #1e1e1e; color: white;">
+			<button id="btn-go-label" style="background: var(--primary); color: white; border: none; border-radius: 8px; padding: 0 20px; font-weight: bold; cursor: pointer;">Vai</button>
+		</div>
 
-        <h2 id="time-label-title">Time Label: <span id="current-label" style="color: var(--primary);"></span></h2>
-        <div id="recent-labels" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
-        <div id="time-feed"></div>
-    </main>
+		<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+			<h2 id="time-label-title" style="margin: 0;">Time Label: <span id="current-label" style="color: var(--primary);"></span></h2>
+			<button id="btn-subscribe" style="background: transparent; border: 1px solid #ffeb3b; color: #ffeb3b; border-radius: 8px; padding: 6px 12px; cursor: pointer; font-size: 0.85em; transition: all 0.2s;">🔔 Ascolta</button>
+		</div>
+
+		<div id="recent-labels" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
+		<div id="time-feed"></div>
+	</main>
+	
+	<main id="view-map" style="display: none; width: 100%; height: 70vh; max-width: 800px; margin: 0 auto; border-radius: 12px; overflow: hidden;"></main>
 
     <script type="module" src="/js/app.js"></script>
 </body>

@@ -19,7 +19,18 @@ export const dictionary = {
         faq_time_title: "Time (Labels):",
         faq_time_desc: "Posts defy physical distance and are grouped into rooms called 'Labels' (e.g., #music, #gemini). Anyone in the world can enter a label and read the messages inside.",
         faq_clock_title: "The Clock:",
-        faq_clock_desc: "Nothing is permanent on xyzt. Every single post, whether in space or time, has a clearly visible expiration time. Once the timer reaches zero, the post is deleted forever."
+        faq_clock_desc: "Nothing is permanent on xyzt. Every single post, whether in space or time, has a clearly visible expiration time. Once the timer reaches zero, the post is deleted forever.",
+		nav_contact: "Contact",
+        contact_title: "Contact Us",
+        contact_desc: "Send us feedback, reports, or requests for help.",
+        contact_email_placeholder: "Your email (optional)",
+        contact_msg_placeholder: "Your message...",
+        contact_send_btn: "Send Message",
+        contact_success_alert: "Message sent successfully! Thank you.",
+		gps_force: "GPS force",
+		notif_updated: "Notifications updated for",
+        btn_listen: "🔔 Listen to room",
+        btn_stop_listen: "🔕 Stop listening"
     },
     it: {
         space_title: "Qui e Ora",
@@ -41,7 +52,18 @@ export const dictionary = {
         faq_time_title: "Time (Etichette):",
         faq_time_desc: "I post sfidano la distanza fisica e sono raggruppati in stanze chiamate 'Label' (es. #musica, #gemini). Chiunque nel mondo può entrare in una label e leggere i messaggi al suo interno.",
         faq_clock_title: "L'Orologio:",
-        faq_clock_desc: "Niente è permanente su xyzt. Ogni singolo post, che sia nello spazio o nel tempo, ha un tempo di scadenza ben visibile. Una volta che il timer scende a zero, il post viene eliminato per sempre."
+        faq_clock_desc: "Niente è permanente su xyzt. Ogni singolo post, che sia nello spazio o nel tempo, ha un tempo di scadenza ben visibile. Una volta che il timer scende a zero, il post viene eliminato per sempre.",
+		nav_contact: "Contatti",
+        contact_title: "Contattaci",
+        contact_desc: "Inviaci feedback, segnalazioni o richieste d'aiuto.",
+        contact_email_placeholder: "Tua email (opzionale)",
+        contact_msg_placeholder: "Il tuo messaggio...",
+        contact_send_btn: "Invia Messaggio",
+        contact_success_alert: "Messaggio inviato con successo! Grazie.",
+		gps_force: "Forza GPS",
+		notif_updated: "Notifiche aggiornate per",
+        btn_listen: "🔔 Ascolta stanza",
+        btn_stop_listen: "🔕 Smetti di ascoltare"
     }
 };
 

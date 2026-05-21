@@ -1,5 +1,5 @@
 import { dictionary, setLanguage } from './i18n.js';
-import { publish, fetchSpacePosts, fetchTimePosts, fetchRecentLabels } from './api.js';
+import { publish, fetchSpacePosts, fetchTimePosts, fetchRecentLabels, sendContactMessage } from './api.js';
 import { getCurrentLocation } from './geofeed.js';
 import { renderFeed } from './ui.js';
 const viewProfile = document.getElementById('view-profile');
@@ -12,6 +12,11 @@ const viewTime = document.getElementById('view-time');
 const btnSpace = document.getElementById('mode-space');
 const btnTime = document.getElementById('mode-time');
 const btnPublish = document.getElementById('btn-publish');
+const btnSubscribe = document.getElementById('btn-subscribe');
+const viewContact = document.getElementById('view-contact');
+
+// Array locale memorizzato nel telefono per le label preferite da ascoltare
+let subscribedLabels = JSON.parse(localStorage.getItem('xyzt_subscriptions') || '[]');
 
 // --- GESTIONE IDENTITA' DISPOSITIVO ---
 let myAuthorId = localStorage.getItem('xyzt_author_id');
@@ -78,6 +83,9 @@ function hideAllViews() {
     viewTime.style.display = 'none';
     viewProfile.style.display = 'none';
     viewFaq.style.display = 'none';
+    viewContact.style.display = 'none';     
+    const viewMap = document.getElementById('view-map');
+    if (viewMap) viewMap.style.display = 'none';    
     publishSection.style.display = 'block';
     mainToggles.style.display = 'flex';
 }
@@ -96,6 +104,7 @@ function showTime(label) {
     btnSpace.classList.remove('active');
     btnTime.classList.add('active');
     document.getElementById('current-label').innerText = label;
+	updateSubscribeButton(label);
     loadRecentLabels();
     loadTimeFeed(label); 
 }
@@ -128,6 +137,109 @@ document.getElementById('btn-go-label').addEventListener('click', () => {
         showTime(newLabel);
     }
 });
+
+let map = null;
+
+document.getElementById('nav-map').addEventListener('click', async (e) => {
+    e.preventDefault();
+    hideAllViews(); // La tua funzione che nasconde gli altri main
+    document.getElementById('publish-section').style.display = 'none';
+    document.getElementById('main-toggles').style.display = 'none';
+    const mapView = document.getElementById('view-map');
+    mapView.style.display = 'block';
+
+    const coords = await getCurrentLocation(); // Cache o GPS lineare
+
+    // Inizializza la mappa se non esiste
+    if (!map) {
+        map = L.map('view-map').setView([coords.lat, coords.lon], 13);
+        L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+            attribution: 'OpenStreetMap & CartoDB'
+        }).addTo(map);
+    } else {
+        map.setView([coords.lat, coords.lon], 13);
+    }
+
+    // Disegna i punti dei post recuperati dal backend
+    const response = await fetch('/api/space/map-points');
+    const points = await response.json();
+
+    points.forEach(p => {
+        L.circleMarker([p.lat, p.lon], {
+            color: '#8a2be2',
+            radius: 6,
+            fillOpacity: 0.8
+        }).addTo(map);
+    });
+});
+
+// Richiesta permessi notifiche browser
+if (customElements && Notification.permission === "default") {
+    Notification.requestPermission();
+}
+
+// Funzione di supporto per iscriversi/disiscriversi da una stanza
+function toggleSubscription(label) {
+    if (subscribedLabels.includes(label)) {
+        subscribedLabels = subscribedLabels.filter(l => l !== label);
+    } else {
+        subscribedLabels.push(label);
+    }
+    localStorage.setItem('xyzt_subscriptions', JSON.stringify(subscribedLabels));
+    
+    const lang = document.getElementById('lang-selector').value;
+    alert(`${dictionary[lang].notif_updated} #${label}`);
+}
+
+function updateSubscribeButton(label) {
+    if (!btnSubscribe) return;
+    
+    const lang = document.getElementById('lang-selector').value;
+    
+    if (subscribedLabels.includes(label)) {
+        btnSubscribe.innerText = dictionary[lang].btn_stop_listen;
+        btnSubscribe.style.color = "#ff4757";       
+        btnSubscribe.style.borderColor = "#ff4757";
+    } else {
+        btnSubscribe.innerText = dictionary[lang].btn_listen;
+        btnSubscribe.style.color = "#ffeb3b";       
+        btnSubscribe.style.borderColor = "#ffeb3b";
+    }
+}
+
+// Evento al click sul bottone
+btnSubscribe.addEventListener('click', () => {
+    const currentLabel = document.getElementById('current-label').innerText;
+    if (!currentLabel) return;
+    
+    toggleSubscription(currentLabel); // Aggiunge/Rimuove dall'array
+    updateSubscribeButton(currentLabel); // Aggiorna i colori del bottone
+});
+
+// Ciclo in background lato Client (Gira ogni 30 secondi sul telefono dell'utente)
+setInterval(async () => {
+    if (Notification.permission !== "granted" || subscribedLabels.length === 0) return;
+
+    for (const label of subscribedLabels) {
+        const response = await fetch(`/api/time/${label}`);
+        const posts = await response.json();
+        
+        if (posts.length > 0) {
+            const ultimoPost = posts[0];
+            const ultimoIdNotificato = localStorage.getItem(`notif_last_id_${label}`);
+
+            // Se c'è un nuovo post che non abbiamo mai visto, manda la notifica di sistema
+            if (ultimoPost.id !== ultimoIdNotificato) {
+                localStorage.setItem(`notif_last_id_${label}`, ultimoPost.id);
+                
+                new Notification(`xyzt: Nuova trasmissione in #${label}`, {
+                    body: ultimoPost.content,
+                    icon: '/favicon.ico' // opzionale
+                });
+            }
+        }
+    }
+}, 60000); // Controlla le stanze preferite ogni 60 secondi
 
 // Forza Refresh GPS
 document.getElementById('btn-refresh-gps').addEventListener('click', async () => {
@@ -232,6 +344,42 @@ btnPublish.addEventListener('click', async () => {
         // Riabilita il bottone
         btnPublish.disabled = false;
         btnPublish.innerText = "Publish";
+    }
+});
+
+// Mostra vista Contatti
+document.getElementById('nav-contact').addEventListener('click', (e) => {
+    e.preventDefault();
+    hideAllViews();
+    publishSection.style.display = 'none';
+    mainToggles.style.display = 'none';
+    viewContact.style.display = 'block';
+});
+
+// Invio modulo Contatti
+document.getElementById('btn-send-contact').addEventListener('click', async () => {
+    const email = document.getElementById('contact-email').value.trim();
+    const message = document.getElementById('contact-message').value.trim();
+    const honeypot = document.getElementById('contact-website').value; // CATTURA L'ESCA
+    const btnSend = document.getElementById('btn-send-contact');
+    const lang = document.getElementById('lang-selector').value;
+    
+    if (!message) return alert("Inserisci un messaggio prima di inviare.");
+    
+    btnSend.disabled = true;
+    btnSend.innerText = "Invio in corso...";
+    
+    try {
+        // Passa l'honeypot alla funzione
+        await sendContactMessage(email, message, honeypot); 
+        alert(dictionary[lang].contact_success_alert);
+        document.getElementById('contact-message').value = ''; 
+        showSpace();
+    } catch (error) {
+        alert("Errore: " + error.message);
+    } finally {
+        btnSend.disabled = false;
+        btnSend.innerText = dictionary[lang].contact_send_btn;
     }
 });
 

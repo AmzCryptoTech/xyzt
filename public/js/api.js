@@ -47,3 +47,20 @@ export async function fetchRecentLabels() {
         return [];
     }
 }
+
+export async function sendContactMessage(email, message, honeypot) {
+    const response = await fetch(`${API_BASE}/contact`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        // Aggiungi honeypot qui
+        body: JSON.stringify({ email, message, honeypot }) 
+    });
+    
+    if (!response.ok) {
+        const err = await response.json();
+        throw new Error(err.error || "Errore invio messaggio");
+    }
+    return await response.json();
+}
