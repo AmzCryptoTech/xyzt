@@ -1,134 +1,206 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
-const { createClient } = require('@supabase/supabase-js');
 const multer = require('multer');
+const path = require('path');
+const { createClient } = require('@supabase/supabase-js');
 
 const app = express();
-app.use(express.json());
+
+// Configurazione Middleware
 app.use(cors());
-app.use(express.static('public'));
+app.use(express.json());
 
 // Connessione a Supabase
-const supabase = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_KEY);
+const supabaseUrl = process.env.SUPABASE_URL;
+const supabaseKey = process.env.SUPABASE_KEY;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
-// Configurazione base per ricevere file in memoria (limite 5MB per evitare abusi)
+// Configurazione Multer per i file in memoria (limite 5MB)
 const upload = multer({ 
     storage: multer.memoryStorage(),
     limits: { fileSize: 5 * 1024 * 1024 } 
 });
 
-// Utility: Calcola il giorno dell'anno (1-365)
-function getDayOfYear(date) {
-    const start = new Date(date.getFullYear(), 0, 0);
-    const diff = (date - start) + ((start.getTimezoneOffset() - date.getTimezoneOffset()) * 60 * 1000);
-    const oneDay = 1000 * 60 * 60 * 24;
-    return Math.floor(diff / oneDay);
+// --- FUNZIONI DI SUPPORTO ---
+
+// Calcolo del valore della label (Curva di degrado per il Tempo)
+function calcoloValoreLabel(label) {
+    if (!label) return 1;
+    const L = label.length;
+    
+    if (L === 7) return 100;
+    if (L >= 1 && L < 7) return Math.floor(1 + (99 / 6) * (L - 1));
+    if (L > 7 && L <= 30) return Math.floor(100 - (99 / 23) * (L - 7));
+    
+    return 1; // Per lunghezze superiori a 30
 }
 
+// Upload immagine su Supabase Storage e restituzione URL pubblico
+async function uploadMedia(file) {
+    if (!file) return null;
+    
+    const fileName = `${Date.now()}-${Math.round(Math.random() * 1000)}`;
+    const { error: uploadError } = await supabase.storage
+        .from('xyzt-media')
+        .upload(fileName, file.buffer, { contentType: file.mimetype });
 
+    if (uploadError) throw uploadError;
 
-// 1. PUBBLICA UN POST (Aggiornato per supportare immagini)
-app.post('/posts', upload.single('media'), async (req, res) => {
-    // Nota: ora usiamo req.body per i testi e req.file per l'immagine
-    const { content, lat, lon } = req.body;
-    const now = new Date();
-    let media_url = null;
+    const { data: urlData } = supabase.storage
+        .from('xyzt-media')
+        .getPublicUrl(fileName);
+        
+    return urlData.publicUrl;
+}
+
+// --- API: DIMENSIONE SPAZIO ---
+
+// Pubblica uno Space Post
+app.post('/api/space', upload.single('media'), async (req, res) => {
+    const { content, lat, lon, author_id } = req.body;
 
     try {
-        // Se l'utente ha inviato una foto, caricala nel bucket Supabase
-        if (req.file) {
-            const fileName = `${Date.now()}-${Math.round(Math.random() * 1000)}`;
-            const { data, error } = await supabase.storage
-                .from('xyzt-media')
-                .upload(fileName, req.file.buffer, {
-                    contentType: req.file.mimetype
-                });
+        const media_url = await uploadMedia(req.file);
 
-            if (error) throw error;
-
-            // Recupera l'URL pubblico e permanente dell'immagine appena caricata
-            const { data: urlData } = supabase.storage
-                .from('xyzt-media')
-                .getPublicUrl(fileName);
-            
-            media_url = urlData.publicUrl;
-        }
-
-        // Salva tutto nel database (con il link all'immagine se esiste)
-        const { data, error } = await supabase.from('posts').insert([{
+        // expires_at viene gestito in automatico dal database (NOW() + 27 hours)
+        const { data, error } = await supabase.from('space_posts').insert([{
             content,
-            media_url: media_url,
+            media_url,
             lat: parseFloat(lat),
             lon: parseFloat(lon),
-            day_of_year: getDayOfYear(now),
-            hour: now.getHours()
-        }]).select('id, deletion_token, created_at').single();
+			author_id: author_id || 'anon'
+        }]).select('id, created_at, expires_at').single();
 
         if (error) throw error;
         res.status(201).json(data);
 
     } catch (error) {
-        console.error("Errore upload:", error);
+        console.error("Errore Pubblicazione Space:", error);
         res.status(500).json({ error: error.message });
     }
 });
 
-// 2. ELIMINA UN POST (Solo entro 10 minuti)
-app.delete('/posts/:id', async (req, res) => {
-    const { id } = req.params;
-    const { deletion_token } = req.body;
-
-    // Recupera il post per controllare i tempi
-    const { data: post, error: fetchError } = await supabase
-        .from('posts').select('created_at').eq('id', id).eq('deletion_token', deletion_token).single();
-
-    if (fetchError || !post) return res.status(403).json({ error: "Post non trovato o token non valido" });
-
-    // Controlla se sono passati meno di 10 minuti (600.000 ms)
-    const ageInMs = new Date() - new Date(post.created_at);
-    if (ageInMs > 600000) {
-        return res.status(403).json({ error: "Tempo scaduto. Il post è ormai permanente." });
-    }
-
-    // Procedi all'eliminazione
-    await supabase.from('posts').delete().eq('id', id);
-    res.json({ message: "Post eliminato con successo" });
-});
-
-// 3. FEED TEMPORALE (Ciclico)
-app.get('/feed/time', async (req, res) => {
-    const now = new Date();
-    const currentDay = getDayOfYear(now);
-    const currentHour = now.getHours();
-
-    const { data, error } = await supabase
-        .from('posts')
-        .select('id, content, media_url, lat, lon, created_at')
-        .eq('day_of_year', currentDay)
-        .eq('hour', currentHour);
-
-    if (error) return res.status(500).json({ error: error.message });
-    res.json(data);
-});
-
-// 4. FEED SPAZIALE (Geo-localizzato)
-app.get('/feed/geo', async (req, res) => {
-    const { lat, lon, radius = 5000 } = req.query; // Default: 5km
-
-    // Richiama la funzione RPC scritta in PostGIS
-    const { data, error } = await supabase.rpc('get_nearby_posts', {
-        user_lat: parseFloat(lat),
-        user_lon: parseFloat(lon),
-        radius_meters: parseFloat(radius)
-    });
-
-    if (error) return res.status(500).json({ error: error.message });
+// Leggi il feed dello Spazio (Tramite PostGIS, max 30 risultati gestiti dal DB)
+app.get('/api/space', async (req, res) => {
+    const { lat, lon, radius = 5000 } = req.query; // 5km default
     
-    // Rimuoviamo il token di sicurezza dai dati inviati al pubblico
-    const cleanData = data.map(({ deletion_token, ...rest }) => rest);
-    res.json(cleanData);
+    try {
+        const { data, error } = await supabase.rpc('get_nearby_space_posts', {
+            user_lat: parseFloat(lat),
+            user_lon: parseFloat(lon),
+            radius_meters: parseFloat(radius)
+        });
+
+        if (error) throw error;
+        res.json(data || []);
+        
+    } catch (error) {
+        console.error("Errore Lettura Space:", error);
+        res.status(500).json({ error: error.message });
+    }
 });
 
+// --- API: DIMENSIONE TEMPO ---
+
+// Pubblica un Time Post
+app.post('/api/time', upload.single('media'), async (req, res) => {
+    const { content, label, author_id } = req.body;
+
+    try {
+        const media_url = await uploadMedia(req.file);
+
+        // Standardizza la label in minuscolo e calcola la scadenza esatta
+        const safeLabel = label ? label.toLowerCase() : 'xyzt';
+        const value = calcoloValoreLabel(safeLabel);
+        
+        const expiresInMinutes = 10 + value; // 10 min fissi + calcolo
+        const expiresAt = new Date(Date.now() + expiresInMinutes * 60000).toISOString();
+
+        const { data, error } = await supabase.from('time_posts').insert([{
+            label: safeLabel,
+            content,
+            media_url,
+            expires_at: expiresAt,
+			author_id: author_id || 'anon'
+        }]).select('id, created_at, expires_at').single();
+
+        if (error) throw error;
+        res.status(201).json(data);
+
+    } catch (error) {
+        console.error("Errore Pubblicazione Time:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Leggi il feed del Tempo (Tramite label esatta)
+app.get('/api/time/:label', async (req, res) => {
+    const { label } = req.params;
+    
+    try {
+        const { data, error } = await supabase.from('time_posts')
+            .select('*')
+            .eq('label', label.toLowerCase())
+            .gt('expires_at', new Date().toISOString()) // Solo quelli ancora validi
+            .order('created_at', { ascending: false });
+
+        if (error) throw error;
+        res.json(data || []);
+        
+    } catch (error) {
+        console.error("Errore Lettura Time:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// --- PULIZIA PERIODICA (Cron interno) ---
+
+// Controlla il database ogni 5 minuti e rimuove definitivamente i post scaduti
+setInterval(async () => {
+    try {
+        const now = new Date().toISOString();
+        await supabase.from('space_posts').delete().lt('expires_at', now);
+        await supabase.from('time_posts').delete().lt('expires_at', now);
+        // Silenzioso, esegue senza intasare i log a meno che non ci sia un errore
+    } catch (error) {
+        console.error("Errore durante il ciclo di pulizia del DB:", error);
+    }
+}, 60000 * 5);
+
+
+// --- FRONTEND ROUTING E GESTIONE FILE STATICI ---
+
+// Ottieni le ultime 10 label attive
+app.get('/api/labels/recent', async (req, res) => {
+    try {
+        const { data, error } = await supabase
+            .from('category_stats')
+            .select('category_id')
+            .eq('category_type', 'TIME')
+            .order('last_activity', { ascending: false })
+            .limit(10);
+            
+        if (error) throw error;
+        res.json(data || []);
+    } catch (error) {
+        console.error("Errore Lettura Labels:", error);
+        res.status(500).json({ error: error.message });
+    }
+});
+
+// Serve tutti i file nella cartella 'public' (css, js, immagini, ecc.)
+app.use(express.static('public'));
+
+// Fallback: per qualsiasi altra URL non gestita dalle API (es. www.xyzt.com/gemini)
+// restituisce index.html, lasciando che Javascript (app.js) gestisca il cambio pagina visivo
+app.get(/.*/, (req, res) => {
+    res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+// --- AVVIO SERVER ---
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Spacetime API in ascolto sulla porta ${PORT}`));
+
+app.listen(PORT, () => {
+    console.log(`🚀 xyzt core è online. API in ascolto sulla porta ${PORT}`);
+});

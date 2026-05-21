@@ -1,230 +1,44 @@
 <!DOCTYPE html>
-<html lang="it">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spacetime Social</title>
-    <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; background-color: #f9f9f9; color: #333; }
-        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
-        textarea, input { width: 100%; padding: 10px; margin: 10px 0; border: 1px solid #ccc; border-radius: 8px; box-sizing: border-box; }
-        button { background: #007bff; color: white; border: none; padding: 10px 15px; border-radius: 8px; cursor: pointer; font-weight: bold; width: 100%; }
-        button:hover { background: #0056b3; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        .btn-delete { background: #dc3545; margin-top: 10px; }
-        .btn-delete:hover { background: #a71d2a; }
-        .status { font-size: 0.9em; color: #666; margin-bottom: 15px; text-align: center; }
-        .post-item { border-bottom: 1px solid #eee; padding: 15px 0; }
-        .post-item:last-child { border-bottom: none; }
-        .time-left { font-size: 0.8em; color: #dc3545; font-weight: bold; }
-    </style>
+    <title>xyzt</title>
+    <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
-
-    <div class="card">
-        <h2 style="margin-top: 0;">Pubblica nel tuo Spaziotempo</h2>
-        <div id="gps-status" class="status">📍 Ricerca segnale GPS in corso...</div>
-        
-        <textarea id="post-content" rows="3" placeholder="Cosa sta succedendo qui, ora?" disabled></textarea>        
-		<input type="file" id="post-media" accept="image/*" capture="environment" disabled style="background: white;">
-        
-        <button id="btn-publish" onclick="publishPost()" disabled>Pubblica</button>
-    </div>
-
-    <div class="card">
-        <h3 style="margin-top: 0;">I tuoi Post Recenti (Locali)</h3>
-        <div id="my-posts">
-            <p class="status">Nessun post recente salvato su questo dispositivo.</p>
+    <header>
+        <h1>xyzt</h1>
+        <div class="toggle-container">
+            <button id="mode-space" class="active">Space</button>
+            <button id="mode-time">Time</button>
         </div>
-    </div>
+        <select id="lang-selector" style="margin-top: 15px; background: #333; color: white; border: none; padding: 5px; border-radius: 5px;">
+            <option value="en">EN</option>
+            <option value="it">IT</option>
+        </select>
+    </header>
 
-    <div class="card">
-        <h3 style="margin-top: 0;">Intorno a Te</h3>
-        <button onclick="loadGeoFeed()" style="margin-bottom: 15px; background: #28a745;">Cerca nei dintorni</button>
-        <div id="geo-feed"></div>
-    </div>
+    <section class="publish-container" style="padding: 20px; max-width: 600px; margin: 0 auto;">
+        <textarea id="post-content" data-i18n="placeholder" placeholder="What's happening?" rows="3"></textarea>
+        <div style="display: flex; gap: 10px; margin-top: 10px;">
+            <input type="file" id="post-media" accept="image/*" capture="environment" style="flex: 1; color: white;">
+            <button id="btn-publish" data-i18n="post_btn">Publish</button>
+        </div>
+    </section>
 
-    <script>
-        const API_BASE = ''; 
-        let currentLat = null;
-        let currentLon = null;
+    <main id="view-space" style="max-width: 600px; margin: 0 auto; padding: 0 20px;">
+        <h2 data-i18n="space_title">Here and Now</h2>
+        <div id="space-feed"></div> </main>
 
-        // 1. Inizializzazione GPS
-        navigator.geolocation.getCurrentPosition(
-            (position) => {
-                currentLat = position.coords.latitude;
-                currentLon = position.coords.longitude;
-                document.getElementById('gps-status').innerText = `📍 Posizione acquisita: ${currentLat.toFixed(4)}, ${currentLon.toFixed(4)}`;
-                
-                // Sblocca il form
-                document.getElementById('post-content').disabled = false;
-                document.getElementById('post-media').disabled = false;
-                document.getElementById('btn-publish').disabled = false;
-            },
-            (error) => {
-                document.getElementById('gps-status').innerText = "❌ Errore GPS: Devi consentire la geolocalizzazione per pubblicare.";
-            }
-        );
+    <main id="view-time" style="display: none; max-width: 600px; margin: 0 auto; padding: 0 20px;">
+		<h2 id="time-label-title">Time Label: <span id="current-label" style="color: var(--primary);"></span></h2>
+		
+		<div id="recent-labels" style="margin-bottom: 20px; display: flex; flex-wrap: wrap; gap: 8px;"></div>
+		
+		<div id="time-feed"></div>
+	</main>
 
-        // 2. Pubblicazione
-        async function publishPost() {
-            const content = document.getElementById('post-content').value;
-            const fileInput = document.getElementById('post-media');
-            const btn = document.getElementById('btn-publish');
-
-            if (!content && !fileInput.files[0]) return alert("Scrivi qualcosa o inserisci una foto!");
-
-            btn.disabled = true;
-            btn.innerText = "Pubblicazione in corso...";
-
-            // Creiamo un pacchetto FormData per contenere sia testo che file
-            const formData = new FormData();
-            formData.append('content', content);
-            formData.append('lat', currentLat);
-            formData.append('lon', currentLon);
-            
-            if (fileInput.files[0]) {
-                formData.append('media', fileInput.files[0]);
-            }
-
-            try {
-                // Attenzione: Non impostare il Content-Type. Il browser lo imposterà 
-                // in automatico a multipart/form-data generando il boundary corretto.
-                const response = await fetch(`${API_BASE}/posts`, {
-                    method: 'POST',
-                    body: formData
-                });
-
-                if (!response.ok) throw new Error("Errore del server");
-
-                const data = await response.json();
-                
-                savePostLocally({
-                    id: data.id,
-                    content: content || "📷 Foto caricata",
-                    created_at: data.created_at,
-                    deletion_token: data.deletion_token
-                });
-
-                // Resetta il form
-                document.getElementById('post-content').value = '';
-                fileInput.value = '';
-                renderMyPosts();
-
-            } catch (err) {
-                alert("Errore durante la pubblicazione: " + err.message);
-            } finally {
-                btn.disabled = false;
-                btn.innerText = "Pubblica";
-            }
-        }
-
-        // 3. Gestione Storage Locale e Cancellazione
-        function savePostLocally(postData) {
-            const posts = JSON.parse(localStorage.getItem('my_spacetime_posts') || '[]');
-            posts.unshift(postData); // Aggiunge in cima
-            localStorage.setItem('my_spacetime_posts', JSON.stringify(posts));
-        }
-
-        async function deletePost(id, token) {
-            if (!confirm("Sei sicuro di voler eliminare questo post?")) return;
-
-            try {
-                const response = await fetch(`${API_BASE}/posts/${id}`, {
-                    method: 'DELETE',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ deletion_token: token })
-                });
-
-                const result = await response.json();
-                if (!response.ok) throw new Error(result.error || "Errore sconosciuto");
-
-                // Rimuovi dal localStorage se eliminato con successo
-                let posts = JSON.parse(localStorage.getItem('my_spacetime_posts') || '[]');
-                posts = posts.filter(p => p.id !== id);
-                localStorage.setItem('my_spacetime_posts', JSON.stringify(posts));
-                
-                renderMyPosts();
-                alert("Post eliminato!");
-
-            } catch (err) {
-                alert("Impossibile eliminare: " + err.message);
-            }
-        }
-
-        // 4. Rendering dell'Interfaccia
-        function renderMyPosts() {
-            const container = document.getElementById('my-posts');
-            const posts = JSON.parse(localStorage.getItem('my_spacetime_posts') || '[]');
-            
-            if (posts.length === 0) {
-                container.innerHTML = '<p class="status">Nessun post recente salvato su questo dispositivo.</p>';
-                return;
-            }
-
-            container.innerHTML = '';
-            const now = new Date().getTime();
-
-            posts.forEach(post => {
-                const postTime = new Date(post.created_at).getTime();
-                const ageMinutes = (now - postTime) / 1000 / 60;
-                const minutesLeft = 10 - Math.floor(ageMinutes);
-                
-                const div = document.createElement('div');
-                div.className = 'post-item';
-                
-                let deleteHtml = '';
-                if (minutesLeft > 0) {
-                    deleteHtml = `
-                        <div class="time-left">Scade tra ${minutesLeft} minuti</div>
-                        <button class="btn-delete" onclick="deletePost('${post.id}', '${post.deletion_token}')">Elimina</button>
-                    `;
-                } else {
-                    deleteHtml = `<div class="status" style="text-align: left; margin-top: 10px;">Post permanente (Tempo scaduto)</div>`;
-                }
-
-                div.innerHTML = `
-                    <div><strong>Il tuo post:</strong> ${post.content}</div>
-                    ${deleteHtml}
-                `;
-                container.appendChild(div);
-            });
-        }
-
-        // 5. Lettura del Feed
-        async function loadGeoFeed() {
-            if (!currentLat) return alert("Attendi il segnale GPS.");
-            
-            const container = document.getElementById('geo-feed');
-            container.innerHTML = "Caricamento...";
-
-            try {
-                // Raggio impostato a 5000 metri (5km) per default dal backend
-                const response = await fetch(`${API_BASE}/feed/geo?lat=${currentLat}&lon=${currentLon}`);
-                const data = await response.json();
-
-                if (data.length === 0) {
-                    container.innerHTML = '<p class="status">Nessun post in questa zona.</p>';
-                    return;
-                }
-
-                container.innerHTML = data.map(post => `
-                    <div class="post-item">
-                        <div>${post.content}</div>
-                        ${post.media_url ? `<img src="${post.media_url}" style="max-width:100%; margin-top:10px; border-radius:8px;">` : ''}
-                    </div>
-                `).join('');
-
-            } catch (err) {
-                container.innerHTML = "Errore di caricamento del feed.";
-            }
-        }
-
-        // Avvia il rendering locale all'apertura
-        renderMyPosts();
-        
-        // Aggiorna i timer di scadenza ogni minuto
-        setInterval(renderMyPosts, 60000);
-    </script>
+    <script type="module" src="/js/app.js"></script>
 </body>
 </html>
